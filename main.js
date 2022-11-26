@@ -55,7 +55,7 @@ var server = http.createServer(function (req, res) {
         const filepath = `${root}${req.url}`;
         if (!fs.existsSync(filepath)) {
             res.writeHead(404, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>Not Found.</body></html>`);
+            res.write(`<html><body>Not Found</body></html>`);
             res.end();
         } else {
             res.writeHead(200, { 'Content-Type': mch[1] === 'html' ? 'text/html' : 'text/javascript' });
@@ -70,16 +70,16 @@ var server = http.createServer(function (req, res) {
         const filepath = `${swap}/${decodeURIComponent(mch[1])}`;
         if (!fs.existsSync(filepath)) {
             res.writeHead(404, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>Not Found.</body></html>`);
+            res.write(`<html><body>Not Found</body></html>`);
             res.end();
         } else {
-            let buf = getFileContent(filepath, true);
+            let st = fs.lstatSync(filepath);
             res.writeHead(200, {
                 'Content-Type': 'application/octet-stream',
-                'Content-Length': buf.length
+                'Content-Length': st.size
             });
-            res.write(buf);
-            res.end();
+            let stream = fs.createReadStream(filepath, {encoding: 'binary'});
+            stream.pipe(res);
         }
         return;
     }
@@ -94,19 +94,19 @@ var server = http.createServer(function (req, res) {
         form.parse(req, (err, fields, files) => {
             if (err) {
                 res.writeHead(500, { 'Content-Type': 'text/html' });
-                res.write(`<html><body>Internal Error</body></html>`);
+                res.write(`<html><body>Internal Server Error</body></html>`);
                 res.end();
                 return;
             }
             res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>ok</body></html>`);
+            res.write(`<html><body>OK</body></html>`);
             res.end();
         });
         return;
     }
     //都不是
     res.writeHead(404, { 'Content-Type': 'text/html' });
-    res.write('<html><body>404</body></html>');
+    res.write('<html><body>Not Found</body></html>');
     res.end();
 });
 
