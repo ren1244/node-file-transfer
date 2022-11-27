@@ -12,6 +12,8 @@ const swap = 'files';  //檔案上傳下載區
 
 //常數
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
+const tplIndex = fs.readFileSync('template/index.html', {encoding: 'utf-8'});
+const tplResponse = fs.readFileSync('template/response.html', {encoding: 'utf-8'});
 
 //偵測網路環境，並顯示網址
 (() => {
@@ -39,15 +41,10 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 const app = express();
 
 function responseIndex(res) {
-    const filepath = path.resolve(__dirname, root, 'index.html');
-    if (!fs.existsSync(filepath)) {
-        responseStatus(res, 404);
-    } else {
-        let content = fs.readFileSync(filepath, { encoding: 'utf-8' });
-        let list = fs.readdirSync(swap).filter(f => fs.lstatSync(`${swap}/${f}`).isFile());
-        content = content.replace('const downloadFiles = [];', 'const downloadFiles = ' + JSON.stringify(list) + ';');
-        res.send(content);
-    }
+    let content = tplIndex;
+    let list = fs.readdirSync(swap).filter(f => fs.lstatSync(`${swap}/${f}`).isFile());
+    content = content.replace('const downloadFiles = [];', 'const downloadFiles = ' + JSON.stringify(list) + ';');
+    res.send(content);
 }
 
 function responseStatus(res, code) {
@@ -56,10 +53,7 @@ function responseStatus(res, code) {
         404: 'Not Found',
         500: 'Internal Server Error',
     };
-    res.status(code).send({
-        status: code,
-        statusText: t[code]
-    });
+    res.status(code).send(tplResponse.replace(/StatusText/g, `${code} ${t[code]}`));
 }
 
 //[GET] 根目錄預設為 index.html
