@@ -1,11 +1,17 @@
 import { networkInterfaces } from 'os';
-import http from 'http';
 import fs from 'fs';
+import path from 'path';
+import * as url from 'url';
+import express from 'express';
 import formidable from 'formidable';
 
+//設定
 const port = 8000;
 const root = 'htdocs'; //網站目錄
 const swap = 'files';  //檔案上傳下載區
+
+//常數
+const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 
 //偵測網路環境，並顯示網址
 (() => {
@@ -23,91 +29,81 @@ const swap = 'files';  //檔案上傳下載區
 
 //確認 swap 資料夾
 (() => {
-    if(!fs.existsSync(swap)) {
+    if (!fs.existsSync(swap)) {
         fs.mkdirSync(swap);
-    } else if(!fs.lstatSync(swap).isDirectory()) {
+    } else if (!fs.lstatSync(swap).isDirectory()) {
         throw `${swap} 必須是資料夾`;
     }
 })();
 
-function getFileContent(filepath, binaryFlag) {
-    let content = binaryFlag ?
-        fs.readFileSync(filepath) :
-        fs.readFileSync(filepath, { encoding: 'utf-8' });
-    if (filepath === `${root}/index.html`) {
+const app = express();
+
+function responseIndex(res) {
+    const filepath = path.resolve(__dirname, root, 'index.html');
+    if (!fs.existsSync(filepath)) {
+        responseStatus(res, 404);
+    } else {
+        let content = fs.readFileSync(filepath, { encoding: 'utf-8' });
         let list = fs.readdirSync(swap).filter(f => fs.lstatSync(`${swap}/${f}`).isFile());
         content = content.replace('const downloadFiles = [];', 'const downloadFiles = ' + JSON.stringify(list) + ';');
+        res.send(content);
     }
-    return content;
 }
 
-var server = http.createServer(function (req, res) {
-    //[GET] 根目錄預設為 index.html
-    if (req.method === 'GET' && req.url == '/') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.write(getFileContent(`${root}/index.html`));
-        res.end();
-        return;
-    }
-    //[GET] *.html 跟 *.js 的請求
-    let mch = req.url.match(/\.(html|js)$/);
-    if (req.method === 'GET' && mch !== null) {
-        const filepath = `${root}${req.url}`;
-        if (!fs.existsSync(filepath)) {
-            res.writeHead(404, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>Not Found</body></html>`);
-            res.end();
-        } else {
-            res.writeHead(200, { 'Content-Type': mch[1] === 'html' ? 'text/html' : 'text/javascript' });
-            res.write(getFileContent(filepath));
-            res.end();
-        }
-        return;
-    }
-    //[GET] /file/*
-    mch = req.url.match(/^\/file\/([\w\W]+)$/);
-    if (req.method === 'GET' && mch !== null) {
-        const filepath = `${swap}/${decodeURIComponent(mch[1])}`;
-        if (!fs.existsSync(filepath)) {
-            res.writeHead(404, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>Not Found</body></html>`);
-            res.end();
-        } else {
-            let st = fs.lstatSync(filepath);
-            res.writeHead(200, {
-                'Content-Type': 'application/octet-stream',
-                'Content-Length': st.size
-            });
-            let stream = fs.createReadStream(filepath, {encoding: 'binary'});
-            stream.pipe(res);
-        }
-        return;
-    }
-    //[POST] 使用者上傳檔案
-    if (req.method === 'POST' && req.url === '/upload') {
-        const form = formidable({
-            uploadDir: swap,
-            filename: (name, ext, part, form) => {
-                return part.originalFilename;
-            }
-        });
-        form.parse(req, (err, fields, files) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'text/html' });
-                res.write(`<html><body>Internal Server Error</body></html>`);
-                res.end();
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.write(`<html><body>OK</body></html>`);
-            res.end();
-        });
-        return;
-    }
-    //都不是
-    res.writeHead(404, { 'Content-Type': 'text/html' });
-    res.write('<html><body>Not Found</body></html>');
-    res.end();
+function responseStatus(res, code) {
+    const t = {
+        200: 'OK',
+        404: 'Not Found',
+        500: 'Internal Server Error',
+    };
+    res.status(code).send({
+        status: code,
+        statusText: t[code]
+    });
+}
+
+//[GET] 根目錄預設為 index.html
+app.get('/', (req, res) => {
+    responseIndex(res);
 });
 
-server.listen(port);
+//[GET] index.html
+app.get('/index.html', (req, res) => {
+    responseIndex(res);
+});
+
+//[GET] /*.html 跟 /*.js 的請求
+app.use('/', express.static(root));
+
+//[GET] /file/*
+app.get('/file/:filename', (req, res) => {
+    const filepath = path.resolve(__dirname, swap, req.params.filename);
+    if (!fs.existsSync(filepath)) {
+        responseStatus(res, 404);
+    } else {
+        res.sendFile(filepath);
+    }
+});
+
+//[POST] /upload  使用者上傳檔案
+app.post('/upload', (req, res) => {
+    const form = formidable({
+        uploadDir: swap,
+        filename: (name, ext, part, form) => {
+            return part.originalFilename;
+        }
+    });
+    form.parse(req, (err, fields, files) => {
+        if (err) {
+            responseStatus(res, 500);
+        } else {
+            responseStatus(res, 200);
+        }
+    });
+});
+
+app.get('*', function (req, res) {
+    responseStatus(res, 404);
+});
+
+app.listen(port);
